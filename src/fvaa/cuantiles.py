@@ -66,4 +66,4 @@ def evaluar_cuantiles(y, tabla, referencia):
             "porcentaje_real_menor_igual": float((y <= tabla[nombre]).mean()*100),
             "pinball_modelo": mean_pinball_loss(y,tabla[nombre],alpha=alpha),
             "pinball_constante": mean_pinball_loss(y,np.full(len(y),referencia.quantile(alpha)),alpha=alpha)})
-    return pd.DataFrame.from_dict(grupos,orient="index"), pd.DataFrame(marginal).set_index("cuantil")
+    return pd.DataFrame.from_dict(grupos,orient="index").rename_axis("grupo"), pd.DataFrame(marginal).set_index("cuantil")

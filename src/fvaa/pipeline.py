@@ -143,7 +143,7 @@ def preparar(c, root, out):
         "particiones": {n:{"filas":len(t),"inicio":t.index.min(),"fin":t.index.max()} for n,t in particiones.items()}}
     guardar_json(out / "calidad.json", calidad)
     exportar(horario,out,"produccion_horaria")
-    exportar(horario[["cobertura_pct"]].describe(),out,"cobertura_resumen")
+    exportar(horario[["cobertura_pct"]].describe().rename_axis("estadistico"),out,"cobertura_resumen")
     exportar(horario.nsmallest(10,"cobertura_pct"),out,"horas_menor_cobertura")
     exportar(variables,out,"variables_con_ausencias")
     exportar(variables.loc[variables.isna().any(axis=1)],out,"filas_excluidas")
@@ -168,7 +168,12 @@ def leer_particion(preparada, nombre, c):
     ruta = preparada/(nombre+".csv")
     if huella(ruta) != leer_json(preparada/"preparacion.json")[nombre]:
         raise ValueError(f"La partición {nombre} cambió desde su preparación.")
-    tabla = pd.read_csv(ruta,index_col=0)
+    # Preservar los float64 exportados: pequeñas diferencias alteran decisiones de árboles.
+    tabla = pd.read_csv(
+        ruta,
+        index_col=0,
+        float_precision="round_trip",
+    )
     tabla.index = pd.to_datetime(tabla.index,utc=True)
     if tabla.empty or not tabla.index.is_unique or not tabla.index.is_monotonic_increasing:
         raise ValueError(f"Partición {nombre} vacía o índice inválido.")
@@ -184,7 +189,7 @@ def leer_particion(preparada, nombre, c):
 
 def exportar_probabilistico(y, originales, corregidos, referencia, out, prefijo):
     exportar(originales,out,prefijo+"_originales")
-    exportar(originales.describe(),out,prefijo+"_resumen_originales")
+    exportar(originales.describe().rename_axis("estadistico"),out,prefijo+"_resumen_originales")
     exportar(corregidos,out,prefijo+"_minimo_cero")
     cruces = diagnosticar_cruces(corregidos)
     exportar(cruces,out,prefijo+"_cruces")
@@ -214,8 +219,8 @@ def desarrollar(c, preparada, out):
         busqueda, resultados, limites = buscar_temporal(X,y,spec,c["cv_splits"],c["n_jobs_busquedas"])
         modelos[nombre] = busqueda.best_estimator_
         especificaciones[nombre] = {"tipo":spec["tipo"],"parametros":dict(spec["parametros"],**busqueda.best_params_)}
-        exportar(resultados,out,nombre+"_cv")
-        exportar(limites,out,nombre+"_particiones")
+        exportar(resultados.rename_axis("configuracion"),out,nombre+"_cv")
+        exportar(limites.rename_axis("fila"),out,nombre+"_particiones")
         guardar_json(out/(nombre+"_mejor.json"),{"parametros":busqueda.best_params_,"MAE_cv_kwh":-busqueda.best_score_})
     pred = referencias(Xv)
     originales = pd.DataFrame(index=Xv.index)
@@ -232,7 +237,7 @@ def desarrollar(c, preparada, out):
     exportar(originales,out,"predicciones_validacion_originales")
     guardar_json(out/"negativos.json",{n:int(originales[n].lt(0).sum()) for n in originales})
     lineal = modelos["lineal"]
-    exportar(pd.DataFrame({"coeficiente":lineal.coef_},index=ENTRADAS),out,"coeficientes_lineal")
+    exportar(pd.DataFrame({"coeficiente":lineal.coef_},index=ENTRADAS).rename_axis("variable"),out,"coeficientes_lineal")
     guardar_json(out/"intercepto_lineal.json",{"kwh":float(lineal.intercept_)})
     error = pred["lineal_minimo_cero"]-yv
     exportar(pd.DataFrame({"real":yv,"prediccion":pred["lineal_minimo_cero"],"error":error,
@@ -247,7 +252,7 @@ def desarrollar(c, preparada, out):
         for nombre,xx,yy in (("train",X,y),("val",Xv,yv)):
             fila.update({nombre+"_"+k:v for k,v in evaluar_predicciones(yy,predecir(m,xx)[1].to_frame("rf")).iloc[0].items()})
         profundidades.append(fila)
-    exportar(pd.DataFrame(profundidades),out,"comparacion_profundidades")
+    exportar(pd.DataFrame(profundidades).rename_axis("configuracion"),out,"comparacion_profundidades")
     params = c["cuantiles"]["parametros"]
     qmodelos = entrenar_cuantiles(X,y,params)
     qo,q = predecir_cuantiles(qmodelos,Xv)
