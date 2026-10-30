@@ -220,6 +220,14 @@ __marimo__/
 # data
 data/
 
+/reports/
+data.zip
 
 #venv
-venv/
+.venv/
+
+#AGENTS.md
+AGENTS.md
+
+# Modelos generados por el pipeline
+*.joblib
