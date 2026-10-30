@@ -228,3 +228,6 @@ data.zip
 
 #AGENTS.md
 AGENTS.md
+
+# Modelos generados por el pipeline
+*.joblib

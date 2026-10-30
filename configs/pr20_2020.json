@@ -1,0 +1,195 @@
+{
+  "experimento": "pr20_2020",
+  "entrada": "data/raw/PTProsumer/PR20/pr20_prod_2020.csv/pr20_prod_2020.csv",
+  "salidas": "reports/experimentos",
+  "inicio": "2020-01-01",
+  "fin_exclusivo": "2021-01-01",
+  "inicio_validacion": "2020-09-01",
+  "inicio_test": "2020-11-01",
+  "cobertura_minima": 99,
+  "entradas": [
+    "energia_anterior_1h",
+    "energia_anterior_2h",
+    "energia_anterior_24h",
+    "hora",
+    "mes"
+  ],
+  "objetivo": "objetivo_kwh",
+  "cv_splits": 3,
+  "n_jobs_busquedas": -1,
+  "modelos": {
+    "lineal": {
+      "tipo": "lineal",
+      "parametros": {}
+    },
+    "rf_inicial": {
+      "tipo": "rf",
+      "parametros": {
+        "n_estimators": 200,
+        "min_samples_leaf": 5,
+        "random_state": 42,
+        "n_jobs": -1
+      }
+    },
+    "gb_inicial": {
+      "tipo": "gb",
+      "parametros": {
+        "n_estimators": 200,
+        "learning_rate": 0.05,
+        "max_depth": 3,
+        "min_samples_leaf": 5,
+        "random_state": 42
+      }
+    }
+  },
+  "profundidades_rf": [
+    5,
+    10,
+    null
+  ],
+  "busquedas": {
+    "rf_grid1": {
+      "tipo": "rf",
+      "parametros": {
+        "n_estimators": 200,
+        "random_state": 42,
+        "n_jobs": 1
+      },
+      "grid": {
+        "max_depth": [
+          5,
+          10,
+          20,
+          null
+        ],
+        "min_samples_leaf": [
+          1,
+          5,
+          15,
+          23
+        ]
+      },
+      "scorer": "neg_mean_absolute_error"
+    },
+    "rf_grid2": {
+      "tipo": "rf",
+      "parametros": {
+        "n_estimators": 200,
+        "random_state": 42,
+        "n_jobs": 1
+      },
+      "grid": {
+        "max_depth": [
+          8,
+          10,
+          12
+        ],
+        "min_samples_leaf": [
+          3,
+          5,
+          8
+        ],
+        "max_features": [
+          0.6,
+          1.0
+        ]
+      },
+      "scorer": "neg_mean_absolute_error"
+    },
+    "gb_grid": {
+      "tipo": "gb",
+      "parametros": {
+        "min_samples_leaf": 5,
+        "random_state": 42
+      },
+      "grid": {
+        "n_estimators": [
+          100,
+          200,
+          400
+        ],
+        "learning_rate": [
+          0.05,
+          0.1
+        ],
+        "max_depth": [
+          2,
+          3
+        ]
+      },
+      "scorer": "mae_no_negativo"
+    }
+  },
+  "variantes_validacion": {
+    "lineal_original": {
+      "fuente": "lineal",
+      "minimo_cero": false
+    },
+    "lineal_minimo_cero": {
+      "fuente": "lineal",
+      "minimo_cero": true
+    },
+    "rf_inicial": {
+      "fuente": "rf_inicial",
+      "minimo_cero": false
+    },
+    "rf_grid1": {
+      "fuente": "rf_grid1",
+      "minimo_cero": false
+    },
+    "rf_grid2": {
+      "fuente": "rf_grid2",
+      "minimo_cero": false
+    },
+    "gb_inicial": {
+      "fuente": "gb_inicial",
+      "minimo_cero": true
+    },
+    "gb_grid": {
+      "fuente": "gb_grid",
+      "minimo_cero": true
+    }
+  },
+  "variantes_finales": {
+    "lineal": {
+      "fuente": "lineal",
+      "minimo_cero": true
+    },
+    "rf": {
+      "fuente": "rf_grid1",
+      "minimo_cero": true
+    },
+    "gb": {
+      "fuente": "gb_inicial",
+      "minimo_cero": true
+    }
+  },
+  "cuantiles": {
+    "parametros": {
+      "n_estimators": 200,
+      "learning_rate": 0.05,
+      "max_depth": 3,
+      "min_samples_leaf": 5,
+      "random_state": 42
+    },
+    "finales": {
+      "q10": "alternativo_lineal",
+      "q50": "original",
+      "q90": "original"
+    }
+  },
+  "figuras": {
+    "produccion": [
+      "2020-01-01",
+      "2020-01-07"
+    ],
+    "validacion": [
+      "2020-09-01",
+      "2020-09-07"
+    ],
+    "test": [
+      "2020-11-01",
+      "2020-11-07"
+    ]
+  }
+}
