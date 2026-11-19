@@ -80,3 +80,73 @@ def validar_produccion(df: pd.DataFrame) -> None:
             "'active_power_P1' contiene potencia negativa. "
             "Revisa estas lecturas antes de procesar la producción."
         )
+
+COLUMNAS_IRRADIACION = [
+    "TOA",
+    "Clear sky GHI",
+    "Clear sky BHI",
+    "Clear sky DHI",
+    "Clear sky BNI",
+    "GHI",
+    "BHI",
+    "DHI",
+    "BNI",
+]
+
+
+def validar_irradiacion(df: pd.DataFrame) -> None:
+    """Valida la estructura y los valores del CSV de irradiación."""
+
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("La irradiación debe ser un pandas.DataFrame.")
+
+    if df.empty:
+        raise ValueError("La tabla de irradiación está vacía.")
+
+    requeridas = {"timestamp", *COLUMNAS_IRRADIACION}
+    faltantes = requeridas.difference(df.columns)
+
+    if faltantes:
+        raise ValueError(
+            f"Faltan columnas obligatorias: {', '.join(sorted(faltantes))}."
+        )
+
+    timestamps = df["timestamp"]
+
+    if not isinstance(timestamps.dtype, pd.DatetimeTZDtype):
+        raise TypeError("'timestamp' debe tener zona horaria.")
+
+    if str(timestamps.dt.tz) != "UTC":
+        raise ValueError("'timestamp' debe estar en UTC.")
+
+    if timestamps.isna().any():
+        raise ValueError("'timestamp' contiene fechas ausentes.")
+
+    if timestamps.duplicated().any():
+        raise ValueError("La irradiación contiene timestamps duplicados.")
+
+    if not timestamps.is_monotonic_increasing:
+        raise ValueError("Los timestamps deben estar ordenados.")
+
+    if timestamps.dt.floor("min").duplicated().any():
+        raise ValueError(
+            "Hay más de una lectura dentro de algún minuto."
+        )
+
+    for columna in COLUMNAS_IRRADIACION:
+        valores = df[columna]
+
+        if (
+            not pd.api.types.is_numeric_dtype(valores)
+            or pd.api.types.is_bool_dtype(valores)
+            or pd.api.types.is_complex_dtype(valores)
+        ):
+            raise TypeError(f"'{columna}' debe contener valores numéricos.")
+
+        observados = valores.dropna()
+
+        if not np.isfinite(observados.to_numpy(dtype=float)).all():
+            raise ValueError(f"'{columna}' contiene valores infinitos.")
+
+        if (observados < 0).any():
+            raise ValueError(f"'{columna}' contiene valores negativos.")

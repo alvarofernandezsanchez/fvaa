@@ -24,6 +24,14 @@ data/raw/PTProsumer/PR20/pr20_prod_2020.csv/pr20_prod_2020.csv
 
 La repetición del nombre corresponde a la carpeta de extracción del archivo. Si tu disposición es distinta, cambia únicamente `entrada` en la configuración. El CSV necesita `timestamp` y `active_power_P1`; las demás columnas no se cargan. La validación existente rechaza fechas inválidas, duplicadas o desordenadas, varias lecturas en el mismo segundo y potencias negativas o infinitas; permite potencia ausente. Se detiene con un error en lugar de corregir esas entradas silenciosamente. Los datos originales permanecen fuera de Git. Se conserva la carga anual existente, sin introducir procesamiento por bloques.
 
+## Preparación de irradiación PR20
+
+La irradiación se carga y agrega a intervalos de 15 minutos mediante `src/fvaa/irradiacion.py`. Para generar las tablas y los informes, ejecuta desde la raíz del proyecto: `python src/04_preparar_irradiacion_15min.py`.
+
+Las tablas agregadas se guardan en `data/interim/PTProsumer/PR20/irradiacion_15min/`. Los informes de cobertura se guardan en `reports/data_quality/`.
+
+El timestamp original marca el final del minuto. En cada cuarto se suman los valores en Wh/m²; la irradiancia media equivalente en W/m² se calcula dividiendo esa suma entre 0,25 horas. Los intervalos incompletos se marcan y no se rellenan con cero. El último cuarto de cada archivo anual puede quedar incompleto porque el archivo termina a las 23:59.
+
 ## Ejecución por etapas
 
 El comando sin `--stage` ejecuta **solo preparación**:
@@ -94,9 +102,9 @@ Los modelos `.joblib` y las carpetas `reports/` no entran en Git. **Solo deben c
 | Reentrenamiento y test | `pipeline.evaluar_final` |
 | Figuras | `figuras.dibujar_predicciones`, `dibujar_intervalo` |
 
-## Coordinación pendiente
+## Estado de irradiación
 
-El contrato horario de producción de este experimento difiere de `docs/data_contract.md`, que describe potencia media en 15 minutos con horizonte de una hora. Ese contrato común se mantiene sin cambios. Antes de integrar irradiación hay que acordar resolución, objetivo y disponibilidad de sus variables en el instante de predicción. No se implementa ni simula irradiación.
+La preparación de irradiación a 15 minutos está implementada en `src/fvaa/irradiacion.py` y se ejecuta con `src/04_preparar_irradiacion_15min.py`. Todavía no está integrada en el modelo: el pipeline descrito en este README sigue siendo la reproducción horaria de producción PR20–2020. Incorporar irradiación al modelo requerirá definir qué variables están disponibles en el instante de predicción.
 
 ## Validación de la extracción
 
