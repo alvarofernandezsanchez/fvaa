@@ -1,88 +1,62 @@
-"""Construcción de variables para la predicción horaria de producción."""
 
-import numpy as np
+"""Variables explicativas para predecir energía horaria."""
+
 import pandas as pd
 
 
-def crear_variables_historicas(
-    df_horario: pd.DataFrame,
-) -> pd.DataFrame:
-    """Construye el objetivo horario, los retardos y el calendario.
-
-    Cada fila en t predice la energía de [t, t + 1 h).
-    Las entradas utilizan únicamente horas terminadas.
-
-    Conserva las filas con valores ausentes y no modifica la entrada.
-    """
-    if not isinstance(df_horario, pd.DataFrame):
-        raise TypeError("La entrada debe ser un pandas.DataFrame.")
-
-    if df_horario.empty:
-        raise ValueError("La tabla horaria está vacía.")
-
-    if not df_horario.columns.is_unique:
-        raise ValueError("La tabla contiene columnas duplicadas.")
-
-    if "energia_estimada_kwh" not in df_horario.columns:
-        raise ValueError("Falta la columna 'energia_estimada_kwh'.")
-
-    indice = df_horario.index
-
-    if not isinstance(indice, pd.DatetimeIndex):
-        raise TypeError("El índice debe ser un DatetimeIndex.")
-
-    if indice.tz is None or str(indice.tz) != "UTC":
-        raise ValueError("El índice debe utilizar la zona horaria UTC.")
-
-    if indice.hasnans:
-        raise ValueError("El índice contiene fechas ausentes.")
-
-    if not indice.is_unique:
-        raise ValueError("El índice contiene fechas duplicadas.")
-
-    if not indice.is_monotonic_increasing:
-        raise ValueError("El índice debe estar ordenado cronológicamente.")
-
-    if not indice.equals(indice.floor("h")):
-        raise ValueError("Cada timestamp debe coincidir con el inicio de una hora.")
-
-    rejilla_esperada = pd.date_range(
-        start=indice[0],
-        end=indice[-1],
-        freq="h",
-    )
-
-    if not indice.equals(rejilla_esperada):
-        raise ValueError(
-            "La rejilla horaria está incompleta. "
-            "Conserva las horas ausentes antes de calcular los retardos."
-        )
-
-    energia = df_horario["energia_estimada_kwh"]
+def crear_variables_historicas(horas):
+    indice = horas.index
 
     if (
-        not pd.api.types.is_numeric_dtype(energia)
-        or pd.api.types.is_bool_dtype(energia)
-        or pd.api.types.is_complex_dtype(energia)
+        not isinstance(indice, pd.DatetimeIndex)
+        or str(indice.tz) != "UTC"
+        or indice.empty
     ):
-        raise TypeError("'energia_estimada_kwh' debe contener números reales.")
+        raise ValueError("Se necesita un índice horario UTC")
 
-    observada = energia.dropna()
+    if (
+        not indice.equals(indice.floor("h"))
+        or not indice.equals(
+            pd.date_range(indice[0], periods=len(indice), freq="h")
+        )
+    ):
+        raise ValueError("La rejilla horaria debe estar completa y ordenada")
 
-    if not np.isfinite(observada.to_numpy(dtype=float)).all():
-        raise ValueError("La energía contiene valores infinitos.")
+    energia = horas["energia_estimada_kwh"]
 
-    if (observada < 0).any():
-        raise ValueError("La energía contiene valores negativos.")
+    variables = pd.DataFrame(index=indice)
+    variables["objetivo_kwh"] = energia
 
-    resultado = pd.DataFrame(index=indice)
+    variables["energia_anterior_1h"] = energia.shift(1)
+    variables["energia_anterior_2h"] = energia.shift(2)
+    variables["energia_anterior_24h"] = energia.shift(24)
 
-    resultado["objetivo_kwh"] = energia
-    resultado["energia_anterior_1h"] = energia.shift(1)
-    resultado["energia_anterior_2h"] = energia.shift(2)
-    resultado["energia_anterior_24h"] = energia.shift(24)
+    variables["hora"] = indice.hour
+    variables["mes"] = indice.month
 
-    resultado["hora"] = indice.hour
-    resultado["mes"] = indice.month
+    return variables
 
-    return resultado
+
+def anadir_irradiacion_historica(variables, irradiacion):
+    """Añade irradiación de horas anteriores a la predicción."""
+
+    if not isinstance(irradiacion.index, pd.DatetimeIndex) or str(irradiacion.index.tz) != "UTC":
+        raise ValueError("La irradiación debe tener índice UTC")
+
+    if (
+        not irradiacion.index.is_unique
+        or not irradiacion.index.equals(irradiacion.index.floor("h"))
+    ):
+        raise ValueError("La irradiación necesita horas únicas y completas")
+
+    salida = variables.copy()
+    meteo = irradiacion.reindex(variables.index)
+
+    for columna, nombre in [
+        ("GHI_media_w_m2", "ghi"),
+        ("Clear sky GHI_media_w_m2", "ghi_despejado")
+    ]:
+        salida[f"{nombre}_anterior_1h"] = meteo[columna].shift(1)
+        salida[f"{nombre}_anterior_24h"] = meteo[columna].shift(24)
+
+    return salida

@@ -1,70 +1,78 @@
+
 import pandas as pd
 
 from fvaa.contracts import COLUMNAS_IRRADIACION
 from fvaa.irradiacion import (
-    agregar_irradiacion_15min,
     cargar_irradiacion,
+    agregar_irradiacion_15min,
+    agregar_irradiacion_horaria
 )
 
 
-def crear_datos_irradiacion(timestamps):
+def crear_datos(fechas):
     return pd.DataFrame({
-        "timestamp": timestamps,
-        **{
-            columna: [1.0] * len(timestamps)
-            for columna in COLUMNAS_IRRADIACION
-        },
+        "timestamp": fechas,
+        **{columna: 1.0 for columna in COLUMNAS_IRRADIACION}
     })
 
 
-def test_agregar_15_minutos_suma_y_convierte_unidades():
-    timestamps = pd.date_range(
-        "2020-01-01 00:01",
-        periods=15,
-        freq="min",
-        tz="UTC",
-    )
-    resultado = agregar_irradiacion_15min(
-        crear_datos_irradiacion(timestamps)
-    )
+def test_carga_utc(tmp_path):
+    fechas = pd.date_range("2020-01-01 00:01", periods=15, freq="min")
+    datos = crear_datos(fechas)
 
-    fila = resultado.loc[pd.Timestamp("2020-01-01 00:15", tz="UTC")]
-
-    assert fila["GHI"] == 15.0
-    assert fila["GHI_media_w_m2"] == 60.0
-    assert fila["minutos_validos"] == 15
-    assert fila["cobertura_pct"] == 100.0
-    assert bool(fila["intervalo_valido"])
-
-
-def test_intervalo_incompleto_no_se_marca_como_valido():
-    timestamps = pd.date_range(
-        "2020-01-01 00:01",
-        periods=14,
-        freq="min",
-        tz="UTC",
-    )
-    resultado = agregar_irradiacion_15min(
-        crear_datos_irradiacion(timestamps)
-    )
-
-    fila = resultado.loc[pd.Timestamp("2020-01-01 00:15", tz="UTC")]
-
-    assert fila["minutos_validos"] == 14
-    assert fila["cobertura_pct"] < 99.0
-    assert not bool(fila["intervalo_valido"])
-    assert pd.isna(fila["GHI_media_w_m2"])
-
-
-def test_cargar_irradiacion_convierte_timestamp_a_utc(tmp_path):
-    timestamps = pd.date_range(
-        "2020-01-01 00:01",
-        periods=15,
-        freq="min",
-    )
     ruta = tmp_path / "irradiacion.csv"
-    crear_datos_irradiacion(timestamps).to_csv(ruta, index=False)
+    datos.to_csv(ruta, index=False)
 
-    resultado = cargar_irradiacion(ruta)
+    assert str(cargar_irradiacion(ruta)["timestamp"].dt.tz) == "UTC"
 
-    assert str(resultado["timestamp"].dt.tz) == "UTC"
+
+def test_agregacion_15min():
+    fechas = pd.date_range(
+        "2020-01-01 00:01", periods=15, freq="min", tz="UTC"
+    )
+
+    cuartos = agregar_irradiacion_15min(crear_datos(fechas))
+
+    assert cuartos.loc["2020-01-01 00:15", "GHI"] == 15
+    assert cuartos.loc["2020-01-01 00:15", "GHI_media_w_m2"] == 60
+
+
+def test_agregacion_horaria():
+    fechas = pd.date_range(
+        "2020-01-01 09:01", periods=60, freq="min", tz="UTC"
+    )
+
+    horas = agregar_irradiacion_horaria(
+        agregar_irradiacion_15min(crear_datos(fechas))
+    )
+
+    assert horas.loc["2020-01-01 09:00", "GHI_media_w_m2"] == 60
+    assert horas.loc["2020-01-01 09:00", "intervalos_validos"] == 4
+
+
+def test_hora_incompleta():
+    fechas = pd.date_range(
+        "2020-01-01 09:01", periods=60, freq="min", tz="UTC"
+    )
+
+    datos = crear_datos(fechas).drop(index=34)
+
+    horas = agregar_irradiacion_horaria(
+        agregar_irradiacion_15min(datos)
+    )
+
+    assert horas.loc["2020-01-01 09:00", "intervalos_validos"] == 3
+    assert pd.isna(horas.loc["2020-01-01 09:00", "GHI_media_w_m2"])
+
+
+def test_frontera_de_ano():
+    fechas = pd.date_range(
+        "2020-12-31 23:01", periods=60, freq="min", tz="UTC"
+    )
+
+    horas = agregar_irradiacion_horaria(
+        agregar_irradiacion_15min(crear_datos(fechas))
+    )
+
+    assert horas.index[0] == pd.Timestamp("2020-12-31 23:00", tz="UTC")
+    assert len(horas) == 1

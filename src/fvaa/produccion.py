@@ -1,75 +1,34 @@
-"""Carga y agregación horaria de producción fotovoltaica."""
 
-from pathlib import Path
+"""Lectura de potencia y cálculo de energía horaria."""
 
 import pandas as pd
-
 from .contracts import validar_produccion
 
 
-def cargar_produccion(ruta: str | Path) -> pd.DataFrame:
-    """Lee la producción, convierte las fechas a UTC y valida la tabla."""
-    ruta = Path(ruta)
+def cargar_produccion(ruta):
+    datos = pd.read_csv(ruta, usecols=["timestamp", "active_power_P1"])
+    datos["timestamp"] = pd.to_datetime(datos["timestamp"], utc=True)
 
-    if not ruta.is_file():
-        raise FileNotFoundError(
-            f"No existe un archivo de producción en: {ruta}"
-        )
-
-    df = pd.read_csv(
-        ruta,
-        usecols=["timestamp", "active_power_P1"],
-    )
-
-    df["timestamp"] = pd.to_datetime(
-        df["timestamp"],
-        utc=True,
-        errors="raise",
-    )
-
-    validar_produccion(df)
-
-    return df
+    validar_produccion(datos)
+    return datos
 
 
-def agregar_produccion_horaria(
-    df: pd.DataFrame,
-    cobertura_minima: float = 99.0,
-) -> pd.DataFrame:
-    """Agrega lecturas en intervalos [t, t + 1 h), etiquetados en t.
+def agregar_produccion_horaria(datos, cobertura_minima=99):
+    validar_produccion(datos)
 
-    La energía se estima suponiendo que la potencia media observada
-    representa toda la hora. Las horas con cobertura insuficiente
-    conservan su fila y tienen energía ausente.
-    """
     if not 0 < cobertura_minima <= 100:
-        raise ValueError(
-            "La cobertura mínima debe ser mayor que 0 y como máximo 100."
-        )
+        raise ValueError("Cobertura mínima no válida")
 
-    validar_produccion(df)
-
-    horario = (
-        df.resample(
-            "1h",
-            on="timestamp",
-            closed="left",
-            label="left",
-        )["active_power_P1"]
-        .agg(
-            potencia_media_w="mean",
-            registros="count",
-        )
+    horas = datos.resample("1h", on="timestamp")["active_power_P1"].agg(
+        potencia_media_w="mean",
+        registros="count"
     )
 
-    horario["cobertura_pct"] = horario["registros"] / 3600 * 100
+    horas["cobertura_pct"] = horas["registros"] / 3600 * 100
+    horas["hora_valida"] = horas["cobertura_pct"] >= cobertura_minima
 
-    horario["hora_valida"] = (
-        horario["cobertura_pct"] >= cobertura_minima
-    )
+    horas["energia_estimada_kwh"] = (
+        horas["potencia_media_w"] / 1000
+    ).where(horas["hora_valida"])
 
-    horario["energia_estimada_kwh"] = (
-        horario["potencia_media_w"] / 1000
-    ).where(horario["hora_valida"])
-
-    return horario
+    return horas
