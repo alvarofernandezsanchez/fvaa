@@ -104,7 +104,13 @@ Los modelos `.joblib` y las carpetas `reports/` no entran en Git. **Solo deben c
 
 ## Estado de irradiación
 
-La preparación de irradiación a 15 minutos está implementada en `src/fvaa/irradiacion.py` y se ejecuta con `src/04_preparar_irradiacion_15min.py`. Todavía no está integrada en el modelo: el pipeline descrito en este README sigue siendo la reproducción horaria de producción PR20–2020. Incorporar irradiación al modelo requerirá definir qué variables están disponibles en el instante de predicción.
+El **nivel 2 ya está integrado** en `notebooks/FVAA_fase1.ipynb`: compara producción y calendario con y sin irradiación histórica para la siguiente hora, el perfil de 24 h y el total de 24 h. Incluye referencias sobre las mismas muestras que los modelos, selección por validación, cuantiles y estudio del tamaño de entrenamiento en validación. Las tablas y gráficas se generan al ejecutar el notebook.
+
+Ejecuta sus celdas en orden con el entorno del proyecto, desde la raíz o desde `notebooks/`. Utiliza producción de 2020 e irradiación de 2020 y, si existe, 2021 para completar el límite anual; las rutas se resuelven desde la raíz. La carga anual de producción requiere memoria para las lecturas por segundo.
+
+La preparación de irradiación a 15 minutos sigue disponible en `src/fvaa/irradiacion.py` y `src/04_preparar_irradiacion_15min.py`. El **pipeline histórico descrito arriba continúa siendo independiente** y reproduce únicamente producción horaria PR20–2020; no ejecuta el nivel 2 del notebook.
+
+Los retardos utilizan horas terminadas en UTC, suponiendo que están disponibles al emitir. CAMS retrospectivo no demuestra disponibilidad inmediata ni equivale a pronósticos archivados. El test de 2020 es conocido y su evaluación es retrospectiva. El nivel 3 de pronósticos meteorológicos y las baterías quedan pendientes y fuera de este cierre.
 
 ## Validación de la extracción
 
