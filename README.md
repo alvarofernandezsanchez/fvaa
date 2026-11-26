@@ -110,10 +110,64 @@ Ejecuta sus celdas en orden con el entorno del proyecto, desde la raíz o desde 
 
 La preparación de irradiación a 15 minutos sigue disponible en `src/fvaa/irradiacion.py` y `src/04_preparar_irradiacion_15min.py`. El **pipeline histórico descrito arriba continúa siendo independiente** y reproduce únicamente producción horaria PR20–2020; no ejecuta el nivel 2 del notebook.
 
-Los retardos utilizan horas terminadas en UTC, suponiendo que están disponibles al emitir. CAMS retrospectivo no demuestra disponibilidad inmediata ni equivale a pronósticos archivados. El test de 2020 es conocido y su evaluación es retrospectiva. El nivel 3 de pronósticos meteorológicos y las baterías quedan pendientes y fuera de este cierre.
+Los retardos utilizan horas terminadas en UTC, suponiendo que están disponibles al emitir. CAMS retrospectivo no demuestra disponibilidad inmediata ni equivale a pronósticos archivados. El test de 2020 es conocido y su evaluación es retrospectiva. El nivel 3 (pronósticos GFS) se describe en su sección más abajo.
 
 ## Validación de la extracción
 
 Los tests existentes cubren cobertura, rejilla, retardos, cortes temporales y alineación de métricas. Las pruebas añadidas verifican carga UTC, contratos, mínimo cero, conservación de originales, cruces y ordenación, cobertura/pinball y la conexión por etapas con un CSV sintético pequeño. Solo en la configuración de esos tests se reducen árboles y grids; `configs/pr20_2020.json` conserva los del notebook.
 
 La validación sintética comprueba comportamiento y conexiones; no impone las métricas reales del notebook. El usuario ha comunicado la reproducción de las métricas compartidas con datos reales en Windows tras preservar la precisión de las particiones CSV. Los resultados, el entorno y los límites de esa equivalencia se documentan en [Reproducibilidad PR20–2020](docs/reproducibilidad_pr20_2020.md); no se ha realizado una comparación exhaustiva de todos los artefactos.
+
+## Nivel 3: pronósticos GFS y comparación de variables meteorológicas
+
+Estado: **resultados completos de una ejecución con carga por trozos (no la oficial del notebook)**. Cuatro configuraciones x tres objetivos (1 h, perfil 24 h, total 24 h) x Ridge/RF/GB, latencias GFS de 6 h (principal) y 3 h (sensibilidad), con pronósticos GFS de 2020 completos. Tablas, selección por validación y figuras en [resultados/resultados_nivel3.md](resultados/resultados_nivel3.md). Es un solo experimento (PR20, 2020, test ya observado); no se generaliza.
+
+Configuraciones (mismas muestras, particiones, modelos, hiperparámetros y métricas por objetivo; la muestra común es la intersección de las cuatro):
+
+1. Nivel 1: producción histórica y calendario.
+2. Nivel 2: nivel 1 más irradiación histórica CAMS.
+3. Nivel 3A: nivel 1 más pronósticos GFS, sin CAMS.
+4. Nivel 3B: nivel 1, CAMS y pronósticos GFS.
+
+La mejora porcentual se calcula con el mismo modelo y objetivo: 2 frente a 1, 3A frente a 1, 3B frente a 2 y 3B frente a 3A (si 3B mejora a 3A, CAMS aporta valor aun con pronósticos). La selección de modelo usa validación, no test. El test de 2020 ya se observó antes, así que no es una evaluación independiente nueva.
+
+### Datos GFS
+
+- Fuente: NCEP GFS 0,25° (GDEX d084001), variable DSWRF en superficie, celda 32,75° N y 343° E (17° O). Es una aproximación a Madeira, no la ubicación confirmada de PR20.
+- `data/interim/gfs_pr20_2020/gfs_madeira_3h_2020.csv` (del compañero, no se obtiene con ningún script de este repositorio: hay que aportarlo): 25 puntos, 1.464 ejecuciones de 2020, plazos de 3 a 24 h, medias de 3 h. No se versiona (datos pesados).
+- Ampliación a 36 h (ruta usada): subset por lotes de GDEX (cuenta gratuita con ORCID, solicitud por API `https://gdex.ucar.edu/api/submit/`), dataset ds084.1, DSWRF, nivel SFC 0, un solo punto (32,75 N, 343 E). Solicitud 996991: ciclos de 6 h de 2020 con los productos f027, f030, f033 y f036; solicitud 996992: ciclos del 31/12/2019 con f003 a f036 (por la latencia en las primeras horas del año). Salen archivos GRIB2 de un punto; `python scripts/leer_gdex_grib2.py <carpeta_grib2> data/raw/gfs_36h/nativos_dswrf.csv` los lee con un lector mínimo (sin ecCodes, no es un lector estándar) y se detiene si algún mensaje no es DSWRF de superficie en la celda, un promedio con empaquetado simple y sin bitmap, o su intervalo no coincide con el nombre. Después, `python scripts/ampliar_gfs.py <csv_original> data/raw/gfs_36h/nativos_dswrf.csv data/interim/gfs_pr20_2020/gfs_madeira_3h_2020_36h.csv` une los nuevos intervalos al CSV original sin modificarlo (11.712 filas originales reutilizadas + 5.904 nuevas = 17.616; 1.468 ciclos con plazos de 3 a 36 h). El notebook usa el CSV de 36 h si existe y, si no, el de 24 h.
+- `scripts/descargar_gfs_ncss.py` (NCSS) queda como ruta alternativa que no se usó para los resultados finales: el servidor NCSS cortaba las conexiones. Con descargas parciales, `scripts/ampliar_gfs.py` omite los tramos de 6 h cuya pareja de 3 h falta y no inventa valores; los objetivos de 24 h con GFS solo se evalúan con cobertura completa.
+- Latencia: `LATENCIA_GFS_H` (6 h por defecto). Para la sensibilidad de 3 h se ejecuta el notebook con 3 y se informan las dos; la elección no se hace con el test. Comparación común entre latencias: cada columna `pronostico_hk` se anula donde no estaría disponible con 6 h (la latencia más restrictiva), por columna y antes de ajustar (`pron.where(alinear_gfs(..., 6).notna())` en el notebook). Después, cada objetivo exige solo las columnas que usa: el de 1 h exige `h0` y los de 24 h exigen `h0` a `h23`. Así, con 3 h y con 6 h cada objetivo usa las mismas filas, y el de 1 h no depende de las columnas de 24 h.
+- Diferencia con la rejilla del compañero: la ampliación cubre **solo la celda 32,75° N, 343° E**, que es la única que usa el notebook. Los otros 24 puntos solo llegan a 24 h.
+- Productos de 3 h y 6 h: f003, f009, ..., f027, f033 son medias de 3 h; f006, f012, ..., f030, f036 son medias de 6 h desde el plazo anterior múltiplo de 6. El segundo tramo de tres horas se reconstruye como `2 * A6h - A3h` y no se solapa con el primero (`tests/test_comparacion_gfs.py`). Se comprobó con un caso real (2020-06-15 00 UTC, f012): 2 x 475 - 220 = 730, igual al CSV del compañero.
+- Valores negativos: el CSV original tiene 10.828 filas con DSWRF entre -20 y -2 W/m². Todas son del tipo "derivado de productos GFS de 3 h y 6 h", ninguna es de un producto directo. Se atribuyen a la resta `2 * A6h - A3h` con valores nativos redondeados, no a una medición. No se eliminan del CSV; `alinear_gfs` los trunca a 0 al alinear, y esa decisión es nuestra, no de GFS.
+
+### Fugas temporales
+
+La hora de inicialización de GFS no es la de publicación. No tenemos fechas de disponibilidad verificadas, así que cada ejecución se considera disponible `latencia` horas después de su inicialización. La latencia principal es de 6 h (**hipótesis**, no disponibilidad histórica acreditada). El notebook informa de la cobertura con 0, 3 y 6 h. Para cada emisión t y cada hora t+h se usa el último pronóstico disponible en t (`pd.merge_asof(direction="backward")`), no el último de esa hora respecto a su propia fecha. Los objetivos de 24 h usan siempre 24 horas de pronóstico (plazos de hasta 36 h). Si la cobertura no es suficiente en las tres particiones, esos objetivos no se evalúan con GFS y el notebook lo indica; no se usan horizontes parciales ni se rellenan faltantes.
+
+### Reproducir
+
+```powershell
+python -m pytest -q
+python descargar_pr20.py --descargar   # producción e irradiación PTProsumer PR20 (OSF, enlaces directos; verifica SHA-256 del .gz y del CSV)
+# subset de GDEX (solicitudes 996991 y 996992, ver arriba) y después:
+python scripts/leer_gdex_grib2.py <carpeta_grib2> data/raw/gfs_36h/nativos_dswrf.csv
+python scripts/ampliar_gfs.py data/interim/gfs_pr20_2020/gfs_madeira_3h_2020.csv data/raw/gfs_36h/nativos_dswrf.csv data/interim/gfs_pr20_2020/gfs_madeira_3h_2020_36h.csv
+```
+
+Después, ejecutar `notebooks/FVAA_fase1.ipynb` desde un kernel nuevo. Con 2 GB de RAM, `python scripts/memoria_limitada/preparar_ejecucion.py` crea copias no oficiales `notebooks/_run_lat6.ipynb` y `_run_lat3.ipynb` (carga de producción por trozos y cada una con su latencia GFS fija, 6 h y 3 h; nada más cambia; no se versionan); los resultados publicados salen de esas copias. La carga de producción necesita memoria para 31,6 millones de filas.
+
+### Versiones y entorno
+
+Resultados publicados obtenidos con Python 3.10.12 (Linux 6.1), numpy 2.2.6, pandas 2.3.3, scikit-learn 1.7.2, scipy 1.15.3, matplotlib 3.10.9, joblib 1.6.0, threadpoolctl 3.8.0, ipykernel 7.3.0, nbconvert 7.17.2, nbclient 0.11.0, nbformat 5.11.1 y pytest 9.2.0. Están fijadas en `requirements-experimento.txt`; se comprobó que `pip install -r requirements-experimento.txt -e .` instala en un entorno nuevo con Python 3.10.12 y que `pip check` no da errores. La suite completa se ha ejecutado en Linux; en Windows fallaba el bloqueo de NCSS (ruta solo Linux), y ese test se omite allí. Los modelos usan `random_state=42`; con otras versiones de scikit-learn o numpy los valores pueden cambiar en las últimas cifras.
+
+### Cargador por bloques
+
+La ejecución con 2 GB de RAM sustituye `cargar_produccion` por `scripts/memoria_limitada/trozos.py` (lectura en trozos de 1 millón de filas con matrices preasignadas) y `fvaa.produccion.validar_produccion` por la versión de `lean.py` (mismas comprobaciones sin tablas hash de 31 millones de filas; ante cualquier incumplimiento llama a la función original, así que los errores y mensajes son idénticos). La equivalencia con el cargador original se comprueba en `tests/test_cargador_trozos.py` (DataFrame idéntico con `check_exact=True` en trozos pequeños, y mismo tipo y mensaje de error en duplicados, desorden, varias lecturas por segundo, potencia negativa y sin potencia) y sobre muestras reales del CSV de PR20 (ver `resultados/equivalencia_cargador.md`). No se ejecutó el cargador original sobre los 31,6 millones de filas por falta de RAM: esa parte es una comprobación por muestras, no una prueba completa.
+
+### Limitaciones
+
+- Descarga GFS a 36 h completa (1468 ciclos, plazos de 3 a 36 h, 17616 filas, sin huecos). El lector de GRIB2 es mínimo y propio (`scripts/leer_gdex_grib2.py`), no un lector estándar. Validó 5904/5904 mensajes con comprobaciones explícitas (`tests/test_leer_gdex_grib2.py`). La comparación con valores de NCSS hecha durante el desarrollo no se conserva como evidencia y no se afirma aquí.
+- Latencia supuesta, ubicación aproximada y un solo año.
+- CAMS retrospectivo no acredita disponibilidad inmediata.
